@@ -35,7 +35,37 @@ open "build/YouTube Max.app"
 `aria2c` اختياري لوضع «توربو»: `brew install aria2`.
 
 يتطلب Xcode (أدوات سطر الأوامر). لا ينزّل البناء أي شيء من الشبكة.
-التطبيق غير موقّع بشهادة Apple (توقيع محلي ad-hoc)، لذا يُشغّل على الجهاز الذي بُني عليه.
+
+### إن ظهر تحذير عند الفتح
+
+التطبيق موقّع توقيعًا محليًا (ad-hoc) لا بشهادة Apple، لذلك قد يمنعه Gatekeeper عند أول فتح:
+
+> “YouTube Max” cannot be opened because the developer cannot be verified.
+
+هذا متوقع لأي تطبيق يُبنى محليًا. اختر أحد الحلّين:
+
+**1) من Finder (الأسهل)**
+
+1. افتح مجلد التطبيق، ثم انقر عليه بالزر الأيمن (أو Control + نقر).
+2. اختر **Open**.
+3. اضغط **Open** مرة أخرى في نافذة التأكيد.
+
+بعدها يُفتح التطبيق عاديًا في المرات القادمة.
+
+**2) من Terminal**
+
+```sh
+xattr -dr com.apple.quarantine "build/YouTube Max.app"
+open "build/YouTube Max.app"
+```
+
+إذا نقلت التطبيق إلى مجلد التطبيقات، استخدم المسار الجديد:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/YouTube Max.app"
+```
+
+لا تحمّل نسخة من مصدر غير هذا المستودع، ولا تُعطّل Gatekeeper للنظام كله.
 
 ## الخصوصية
 
