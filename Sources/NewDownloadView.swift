@@ -6,58 +6,50 @@ struct NewDownloadView: View {
     @State private var showLoader = false
 
     var body: some View {
-        Group {
-            if model.info != nil || !model.activeJobs.isEmpty {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 13) {
-                        header
-                        linkCard
-                        if let info = model.info {
-                            HStack(alignment: .top, spacing: 13) {
-                                PreviewCard(info: info)
-                                    .frame(width: 268)
-                                OptionsCard(info: info)
-                            }
-                            .transition(.opacity)
-                        } else if model.isInspecting {
-                            InspectingCard()
-                        } else if let error = model.inspectError {
-                            ErrorCard(message: error)
-                        }
-                        if !model.activeJobs.isEmpty { ActiveJobsCard() }
-                        recentSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                header
+                linkCard
+
+                if let info = model.info {
+                    HStack(alignment: .top, spacing: 13) {
+                        PreviewCard(info: info)
+                            .frame(width: 268)
+                        OptionsCard(info: info)
                     }
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 18)
-                    .frame(maxWidth: 980, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .top)
+                    .transition(.opacity)
+                } else if model.isInspecting {
+                    InspectingCard()
+                } else if let error = model.inspectError {
+                    ErrorCard(message: error)
                 }
-            } else {
-                VStack(alignment: .leading, spacing: 13) {
-                    header
-                    linkCard
-                    if model.isInspecting {
-                        InspectingCard()
-                    } else if let error = model.inspectError {
-                        ErrorCard(message: error)
-                    }
+
+                if !model.activeJobs.isEmpty {
+                    ActiveJobsCard()
+                }
+
+                if model.info == nil && model.activeJobs.isEmpty {
                     StartGuide()
-                    if !model.finishedJobs.isEmpty {
-                        recentSection
-                    } else {
-                        QuickFacts()
-                    }
-                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
-                .frame(maxWidth: 980, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                if !model.finishedJobs.isEmpty {
+                    recentSection
+                } else if model.info == nil && model.activeJobs.isEmpty {
+                    QuickFacts()
+                }
+
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 22)
+            .padding(.top, 6)
+            .padding(.bottom, 18)
+            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .defaultScrollAnchor(.top)
         .animation(.smooth(duration: 0.3), value: model.info?.id)
         .animation(.smooth(duration: 0.25), value: model.activeJobs.count)
-        .onAppear { urlFocused = true }
+        .defaultScrollAnchor(.top)
         .overlay {
             if showLoader {
                 ZStack {

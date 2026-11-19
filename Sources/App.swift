@@ -92,6 +92,7 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .safeAreaPadding(.top, 10)
         .background(.clear)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

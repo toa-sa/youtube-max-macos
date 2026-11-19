@@ -49,7 +49,8 @@ struct LibraryView: View {
             }
         }
         .padding(.horizontal, 28)
-        .padding(.vertical, 24)
+        .padding(.top, 6)
+        .padding(.bottom, 24)
         .frame(maxWidth: 980, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .top)
     }
