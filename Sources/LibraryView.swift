@@ -123,6 +123,7 @@ struct LibraryRow: View {
                     .foregroundStyle(ToaColor.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 7) {
+                    PlatformBadge(platform: job.video.resolvedPlatform)
                     Text(job.profile.name)
                     Text("·")
                     Text(job.quality == .maximum ? "أقصى جودة" : job.quality.short)

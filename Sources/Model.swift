@@ -123,6 +123,37 @@ enum DownloadSpeed: Int, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum Platform: String, Codable, Sendable, CaseIterable {
+    case youtube, x, facebook, instagram
+
+    var title: String {
+        switch self {
+        case .youtube: "YouTube"
+        case .x: "X"
+        case .facebook: "Facebook"
+        case .instagram: "Instagram"
+        }
+    }
+
+    var short: String {
+        switch self {
+        case .youtube: "YT"
+        case .x: "X"
+        case .facebook: "FB"
+        case .instagram: "IG"
+        }
+    }
+
+    var tint: String {
+        switch self {
+        case .youtube: "red"
+        case .x: "primary"
+        case .facebook: "blue"
+        case .instagram: "purple"
+        }
+    }
+}
+
 struct VideoInfo: Identifiable, Equatable, Sendable, Codable {
     let id: String
     let title: String
@@ -131,6 +162,14 @@ struct VideoInfo: Identifiable, Equatable, Sendable, Codable {
     let thumbnail: URL?
     let viewCount: Int?
     let heights: [Int]
+    var pageURL: URL?
+    var platform: Platform?
+
+    var resolvedPlatform: Platform { platform ?? .youtube }
+
+    var resolvedURL: URL {
+        pageURL ?? URL(string: "https://www.youtube.com/watch?v=\(id)")!
+    }
 }
 
 struct DownloadJob: Identifiable, Equatable, Sendable, Codable {
@@ -207,16 +246,19 @@ final class AppModel {
     // MARK: - Inspecting
 
     func inspect() async {
-        guard let id = VideoID.parse(urlText) else {
-            inspectError = "الرابط غير صالح. الصق رابط فيديو واحد من يوتيوب."
+        let link: ParsedLink
+        do {
+            link = try LinkParser.parse(urlText)
+        } catch {
             info = nil
+            inspectError = (error as? LocalizedError)?.errorDescription ?? LinkError.invalid.errorDescription
             return
         }
         isInspecting = true
         inspectError = nil
         defer { isInspecting = false }
         do {
-            let result = try await Metadata.fetch(id: id)
+            let result = try await Metadata.fetch(link: link)
             info = result
             if !result.heights.isEmpty, quality != .maximum, !result.heights.contains(quality.rawValue) {
                 // keep the user's choice; the menu disables unavailable caps
@@ -332,17 +374,73 @@ final class AppModel {
     }
 }
 
-enum VideoID {
-    static func parse(_ raw: String) -> String? {
+struct ParsedLink: Sendable {
+    let platform: Platform
+    let url: URL
+    let id: String
+}
+
+enum LinkError: LocalizedError {
+    case invalid
+    case unsupportedPlatform(String)
+    case loginRequired(Platform)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalid:
+            "الرابط غير صالح. الصق رابط منشور واحد من YouTube أو X أو Facebook."
+        case .unsupportedPlatform(let name):
+            "\(name) يطلب تسجيل الدخول لكل المحتوى تقريبًا، ولا يدعمه التطبيق حاليًا."
+        case .loginRequired(let platform):
+            "\(platform.title) يطلب تسجيل الدخول لهذا المنشور. جرّب منشورًا عامًا."
+        }
+    }
+}
+
+enum LinkParser {
+    static func parse(_ raw: String) throws -> ParsedLink {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.hasPrefix("https://"), !text.contains(" "), !text.contains("\\"),
               let comps = URLComponents(string: text),
-              let host = comps.host?.lowercased() else { return nil }
-        let allowed: Set<String> = [
-            "youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com",
-            "music.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"
-        ]
-        guard allowed.contains(host) else { return nil }
+              let host = comps.host?.lowercased() else { throw LinkError.invalid }
+
+        if isYouTube(host) {
+            guard let id = youtubeID(host: host, comps: comps) else { throw LinkError.invalid }
+            let url = URL(string: "https://www.youtube.com/watch?v=\(id)")!
+            return ParsedLink(platform: .youtube, url: url, id: id)
+        }
+
+        if isX(host) {
+            let parts = comps.path.split(separator: "/").map(String.init)
+            guard parts.count >= 3, parts[1] == "status",
+                  let rawID = parts.last, rawID.allSatisfy(\.isNumber), rawID.count >= 10 else {
+                throw LinkError.invalid
+            }
+            let clean = "https://x.com/\(parts[0])/status/\(rawID)"
+            guard let url = URL(string: clean) else { throw LinkError.invalid }
+            return ParsedLink(platform: .x, url: url, id: rawID)
+        }
+
+        if isFacebook(host) {
+            guard let url = facebookURL(host: host, comps: comps, path: comps.path) else {
+                throw LinkError.invalid
+            }
+            return ParsedLink(platform: .facebook, url: url, id: facebookID(url) ?? url.absoluteString)
+        }
+
+        if isInstagram(host) {
+            throw LinkError.unsupportedPlatform("Instagram")
+        }
+
+        throw LinkError.invalid
+    }
+
+    private static func isYouTube(_ host: String) -> Bool {
+        ["youtu.be", "youtube.com", "www.youtube.com", "m.youtube.com",
+         "music.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com"].contains(host)
+    }
+
+    private static func youtubeID(host: String, comps: URLComponents) -> String? {
         var candidate: String?
         if host == "youtu.be" {
             candidate = comps.path.split(separator: "/").first.map(String.init)
@@ -355,6 +453,48 @@ enum VideoID {
         guard let id = candidate, id.count == 11,
               id.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else { return nil }
         return id
+    }
+
+    private static func isX(_ host: String) -> Bool {
+        ["x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"].contains(host)
+    }
+
+    private static func isFacebook(_ host: String) -> Bool {
+        host == "fb.watch" || host == "fb.com" || host.hasSuffix("facebook.com")
+    }
+
+    private static func isInstagram(_ host: String) -> Bool {
+        host.hasSuffix("instagram.com") || host == "instagr.am"
+    }
+
+    private static func facebookURL(host: String, comps: URLComponents, path: String) -> URL? {
+        if host == "fb.watch" {
+            let parts = path.split(separator: "/").map(String.init)
+            guard let code = parts.first, !code.isEmpty else { return nil }
+            return URL(string: "https://fb.watch/\(code)/")
+        }
+        if let v = comps.queryItems?.first(where: { $0.name == "v" })?.value,
+           !v.isEmpty, v.allSatisfy(\.isNumber) {
+            return URL(string: "https://www.facebook.com/watch/?v=\(v)")
+        }
+        let parts = path.split(separator: "/").map(String.init)
+        if parts.first == "reel", parts.count >= 2, parts[1].allSatisfy(\.isNumber) {
+            return URL(string: "https://www.facebook.com/reel/\(parts[1])")
+        }
+        if let index = parts.firstIndex(of: "videos"), parts.count > index + 1 {
+            let id = parts[index + 1]
+            guard !id.isEmpty, id.allSatisfy(\.isNumber) else { return nil }
+            let owner = parts.first.flatMap { $0 == "videos" ? nil : $0 } ?? "watch"
+            return URL(string: "https://www.facebook.com/\(owner)/videos/\(id)/")
+        }
+        return nil
+    }
+
+    private static func facebookID(_ url: URL) -> String? {
+        let parts = url.path.split(separator: "/").map(String.init)
+        if let last = parts.last, last.allSatisfy(\.isNumber) { return last }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "v" })?.value
     }
 }
 

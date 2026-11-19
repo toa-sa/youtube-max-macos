@@ -18,20 +18,20 @@ enum EngineError: LocalizedError {
         switch self {
         case .missingTool(let name): "الأداة \(name) غير مثبتة."
         case .badMetadata: "تعذّر قراءة بيانات الفيديو."
-        case .notAVideo: "الرابط ليس فيديو يوتيوب صالحًا."
+        case .notAVideo: "لم نجد مقطعًا في هذا الرابط."
         case .failed(let message): message
         }
     }
 }
 
 enum Metadata {
-    static func fetch(id: String) async throws -> VideoInfo {
+    static func fetch(link: ParsedLink) async throws -> VideoInfo {
         guard let ytdlp = Tools.find("yt-dlp") else { throw EngineError.missingTool("yt-dlp") }
-        let url = "https://www.youtube.com/watch?v=\(id)"
+        let url = link.url.absoluteString
         let output = try await ProcessRunner.run(
             ytdlp,
             ["--ignore-config", "--no-playlist", "--no-warnings", "--skip-download",
-             "--dump-single-json", "--", url],
+             "--no-config-locations", "--dump-single-json", "--", url],
             timeout: 90
         )
         guard output.status == 0 else {
@@ -41,22 +41,45 @@ enum Metadata {
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw EngineError.badMetadata
         }
-        guard let videoID = root["id"] as? String,
-              let title = root["title"] as? String else { throw EngineError.notAVideo }
-        let heights = (root["formats"] as? [[String: Any]] ?? [])
+        guard let videoID = root["id"] as? String else { throw EngineError.notAVideo }
+        let entries = root["entries"] as? [[String: Any]] ?? []
+        guard entries.count <= 1 else {
+            throw EngineError.failed("هذا الرابط يحتوي أكثر من مقطع. الصق رابط منشور واحد.")
+        }
+        let item = entries.first ?? root
+        guard let title = (item["title"] as? String) ?? (item["description"] as? String) else {
+            throw EngineError.notAVideo
+        }
+        let titleText = title
+            .split(whereSeparator: \.isNewline)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? title
+        let heights = (item["formats"] as? [[String: Any]] ?? [])
             .compactMap { $0["height"] as? Int }
             .filter { $0 > 0 }
         let unique = Array(Set(heights)).sorted(by: >)
-        let thumbString = (root["thumbnail"] as? String)
-            ?? ((root["thumbnails"] as? [[String: Any]])?.last?["url"] as? String)
+        let thumbList = item["thumbnails"] as? [[String: Any]] ?? []
+        let thumbString = (item["thumbnail"] as? String)
+            ?? thumbList.compactMap { $0["url"] as? String }.last
+            ?? (item["thumbnail"] as? String)
+        let channel = (item["uploader"] as? String)
+            ?? (item["channel"] as? String)
+            ?? (item["uploader_id"] as? String)
+            ?? link.platform.title
+        let duration = (item["duration"] as? Int)
+            ?? (item["duration"] as? Double).map(Int.init)
+            ?? 0
         return VideoInfo(
             id: videoID,
-            title: title,
-            channel: (root["uploader"] as? String) ?? (root["channel"] as? String) ?? "YouTube",
-            duration: (root["duration"] as? Int) ?? (root["duration"] as? Double).map(Int.init) ?? 0,
+            title: titleText,
+            channel: channel,
+            duration: duration,
             thumbnail: thumbString.flatMap(URL.init(string:)),
-            viewCount: root["view_count"] as? Int,
-            heights: unique
+            viewCount: (item["view_count"] as? Int) ?? (item["like_count"] as? Int),
+            heights: unique,
+            pageURL: link.url,
+            platform: link.platform
         )
     }
 
@@ -273,7 +296,9 @@ final class DownloadRunner: @unchecked Sendable {
             args += ["--merge-output-format", "mkv", "--remux-video", "mkv", "-f", format]
         }
 
-        let heightTemplate = job.profile.isAudio ? "" : " [%(height)sp]"
+        // Only YouTube reliably exposes height; other sites would print "NAp".
+        let heightTemplate = (job.profile.isAudio || job.video.resolvedPlatform != .youtube)
+            ? "" : " [%(height)sp]"
         let template = "%(title).160B [%(id)s]\(heightTemplate) [\(job.profile.name)].%(ext)s"
         args += ["-o", template]
 
@@ -283,7 +308,7 @@ final class DownloadRunner: @unchecked Sendable {
                 "--downloader-args", "aria2c:-x 8 -s 8 -k 1M --max-tries=5 --retry-wait=2"
             ]
         }
-        args += ["--", "https://www.youtube.com/watch?v=\(job.video.id)"]
+        args += ["--", job.video.resolvedURL.absoluteString]
         return args
     }
 }

@@ -85,7 +85,7 @@ struct NewDownloadView: View {
                 Text("نزّل ما تريد مشاهدته")
                     .font(TOAFont.display)
                     .foregroundStyle(ToaColor.textPrimary)
-                Text("الصق الرابط، اختر الصيغة، ويُحفظ الملف على جهازك.")
+                Text("YouTube · X · Facebook — الصق الرابط، اختر الصيغة، ويُحفظ الملف على جهازك.")
                     .font(TOAFont.bodyLarge)
                     .foregroundStyle(ToaColor.textSecondary)
             }
@@ -108,7 +108,7 @@ struct NewDownloadView: View {
                 .multilineTextAlignment(.leading)
                 .overlay(alignment: .leading) {
                     if model.urlText.isEmpty {
-                        Text("الصق رابط الفيديو هنا…")
+                        Text("الصق رابط YouTube أو X أو Facebook…")
                             .font(TOAFont.font(12))
                             .foregroundStyle(ToaColor.textSecondary.opacity(0.7))
                             .environment(\.layoutDirection, .rightToLeft)
@@ -205,7 +205,7 @@ struct PreviewCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Thumbnail(url: info.thumbnail)
+            Thumbnail(url: info.thumbnail, platform: info.resolvedPlatform)
                 .frame(height: 138)
                 .frame(maxWidth: .infinity)
                 .clipShape(.rect(cornerRadius: 10))
@@ -217,7 +217,11 @@ struct PreviewCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Label(info.channel, systemImage: "person.crop.circle")
+                HStack(spacing: 5) {
+                    PlatformBadge(platform: info.resolvedPlatform)
+                    Text(info.channel)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 10) {
                     if info.duration > 0 {
                         Label(info.duration.videoClock, systemImage: "clock")
@@ -252,6 +256,7 @@ struct PreviewCard: View {
 
 struct Thumbnail: View {
     let url: URL?
+    var platform: Platform = .youtube
     @State private var image: NSImage?
 
     var body: some View {
@@ -262,9 +267,7 @@ struct Thumbnail: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: "play.rectangle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.tertiary)
+                fallback
             }
         }
         .clipped()
@@ -272,8 +275,23 @@ struct Thumbnail: View {
             guard let url else { return }
             var request = URLRequest(url: url)
             request.timeoutInterval = 20
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+                             forHTTPHeaderField: "User-Agent")
+            request.setValue(url.absoluteString, forHTTPHeaderField: "Referer")
             guard let (data, _) = try? await URLSession.shared.data(for: request) else { return }
             image = NSImage(data: data)
+        }
+    }
+
+    private var fallback: some View {
+        VStack(spacing: 4) {
+            Image(systemName: platform == .facebook ? "video.badge.plus"
+                  : (platform == .x ? "at" : "play.rectangle"))
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(ToaColor.textSecondary.opacity(0.55))
+            Text(platform.title)
+                .font(TOAFont.font(9, .medium))
+                .foregroundStyle(ToaColor.textSecondary.opacity(0.7))
         }
     }
 }
@@ -351,9 +369,13 @@ struct StartGuide: View {
                         .font(TOAFont.h3)
                         .foregroundStyle(ToaColor.textPrimary)
                 }
-                step(1, "انسخ رابط الفيديو من يوتيوب", "أي رابط watch أو Shorts أو youtu.be.")
+                step(1, "انسخ رابط المنشور", "YouTube · X · Facebook — منشور واحد عام")
                 step(2, "الصقه في الحقل واضغط تحقق", "ستظهر معاينة الفيديو والجودات المتاحة.")
                 step(3, "اختر الصيغة والجودة ثم ابدأ", "يُحفظ الملف في مجلد الأفلام على جهازك.")
+                Text("Instagram يحتاج تسجيل دخول لكل المحتوى تقريبًا، لذلك لا يدعمه التطبيق.")
+                    .font(TOAFont.font(9.5))
+                    .foregroundStyle(ToaColor.textSecondary.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 10))
@@ -472,7 +494,7 @@ struct JobRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Thumbnail(url: job.video.thumbnail)
+            Thumbnail(url: job.video.thumbnail, platform: job.video.resolvedPlatform)
                 .frame(width: compact ? 66 : 84, height: compact ? 37 : 47)
                 .clipShape(.rect(cornerRadius: 6))
 
@@ -542,7 +564,7 @@ struct CompactJobRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Thumbnail(url: job.video.thumbnail)
+            Thumbnail(url: job.video.thumbnail, platform: job.video.resolvedPlatform)
                 .frame(width: 54, height: 30)
                 .clipShape(.rect(cornerRadius: 5))
             Text(job.video.title)
@@ -569,6 +591,29 @@ struct CompactJobRow: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 5)
         .background(ToaColor.surface.opacity(0.4), in: .rect(cornerRadius: 8))
+    }
+}
+
+struct PlatformBadge: View {
+    let platform: Platform
+
+    var body: some View {
+        Text(platform.short)
+            .font(TOAFont.font(8.5, .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background(color.opacity(0.14), in: .capsule)
+            .overlay { Capsule().strokeBorder(color.opacity(0.35), lineWidth: 0.8) }
+    }
+
+    private var color: Color {
+        switch platform {
+        case .youtube: Color(red: 0.80, green: 0.16, blue: 0.14)
+        case .x: ToaColor.textPrimary
+        case .facebook: Color(red: 0.09, green: 0.36, blue: 0.75)
+        case .instagram: Color(red: 0.60, green: 0.24, blue: 0.55)
+        }
     }
 }
 
