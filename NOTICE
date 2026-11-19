@@ -1,0 +1,17 @@
+YouTube Max — macOS
+===================
+
+This macOS interface is a derivative work of:
+
+    yt-dlp/youtube-max-downloader  →  https://github.com/ikhd/youtube-max-downloader
+    Copyright (c) 2026 ikhd — MIT License
+
+The original project supplied the macOS downloader script and the Windows trial.
+This repository re-implements the interface in SwiftUI and keeps the same
+command-line foundation (yt-dlp + FFmpeg).
+
+Third-party components:
+
+    yt-dlp     — Unlicense
+    FFmpeg     — LGPL / GPL (as built)
+    Cairo font — SIL Open Font License 1.1 (Resources/Fonts/Cairo-OFL.txt)
