@@ -10,16 +10,43 @@ struct DownloadUpdate: Sendable {
 
 
 enum BrowserCookies {
-    /// Which installed browser holds the user's session. Read locally by yt-dlp only.
+    /// Which browser actually has a cookie store on disk right now.
+    /// Checking the database (not just the app folder) avoids yt-dlp failing with
+    /// "could not find ... cookies database" while the profile is being written.
     static func source() -> String? {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates: [(String, String)] = [
+        func exists(_ relative: String) -> Bool {
+            FileManager.default.fileExists(atPath: home.appendingPathComponent(relative).path)
+        }
+        func anyFile(_ relativeDir: String, prefix: String, suffix: String) -> Bool {
+            let dir = home.appendingPathComponent(relativeDir)
+            guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+            return names.contains { $0.hasPrefix(prefix) && $0.hasSuffix(suffix) }
+        }
+
+        // Chromium family: <root>/Default/Cookies or <root>/Profile */Cookies.
+        let chromium: [(String, String)] = [
             ("chrome", "Library/Application Support/Google/Chrome"),
             ("edge", "Library/Application Support/Microsoft Edge"),
-            ("safari", "Library/Safari"),
-            ("firefox", "Library/Application Support/Firefox"),
         ]
-        return candidates.first { FileManager.default.fileExists(atPath: home.appendingPathComponent($1).path) }?.0
+        for (name, root) in chromium {
+            if exists("\(root)/Default/Cookies") { return name }
+            let base = home.appendingPathComponent(root)
+            if let profiles = try? FileManager.default.contentsOfDirectory(atPath: base.path) {
+                for profile in profiles where profile.hasPrefix("Profile ") {
+                    if exists("\(root)/\(profile)/Cookies") { return name }
+                }
+            }
+        }
+        if exists("Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies")
+            || exists("Library/Cookies/Cookies.binarycookies")
+            || exists("Library/Safari") {
+            return "safari"
+        }
+        if anyFile("Library/Application Support/Firefox/Profiles", prefix: "", suffix: "cookies.sqlite") {
+            return "firefox"
+        }
+        return nil
     }
 
     static func arguments(for link: ParsedLink) -> [String] {
@@ -111,6 +138,13 @@ enum Metadata {
     }
 
     static func processMessage(_ stderr: String) -> String {
+        let lower = stderr.lowercased()
+        if lower.contains("cookies database") || lower.contains("could not find") && lower.contains("cookies") {
+            return "لم يجد التطبيق جلسة تسجيل دخول في المتصفح. افتح Chrome وتأكد أنك مسجّل الدخول في إنستقرام، ثم أعد المحاولة."
+        }
+        if lower.contains("empty media response") || lower.contains("login required") {
+            return "إنستقرام يطلب تسجيل دخول لهذا المنشور. سجّل الدخول في Chrome ثم أعد المحاولة."
+        }
         let lines = stderr.split(separator: "\n").map(String.init)
         let meaningful = lines.last { line in
             !line.hasPrefix("[debug]") && !line.trimmingCharacters(in: .whitespaces).isEmpty
