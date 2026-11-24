@@ -231,6 +231,7 @@ final class AppModel {
         await checkTools()
         try? FileManager.default.createDirectory(at: downloadFolder, withIntermediateDirectories: true)
         if let arg = CommandLine.arguments.dropFirst().first(where: { $0.hasPrefix("https://") }) {
+            try? await Task.sleep(for: .milliseconds(800))
             urlText = arg
             await inspect()
         }
@@ -467,25 +468,63 @@ enum LinkParser {
         host.hasSuffix("instagram.com") || host == "instagr.am"
     }
 
+    private static func isSlug(_ text: String) -> Bool {
+        !text.isEmpty && text.count <= 64
+            && text.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    private static func isNumericID(_ text: String) -> Bool {
+        !text.isEmpty && text.count <= 32 && text.allSatisfy(\.isNumber)
+    }
+
     private static func facebookURL(host: String, comps: URLComponents, path: String) -> URL? {
-        if host == "fb.watch" {
-            let parts = path.split(separator: "/").map(String.init)
-            guard let code = parts.first, !code.isEmpty else { return nil }
-            return URL(string: "https://fb.watch/\(code)/")
+        let parts = path.split(separator: "/").map(String.init)
+
+        // Short share links (facebook.com/share/v/CODE) and fb.watch codes are resolved
+        // by yt-dlp itself, so keep the link as-is and drop tracking parameters.
+        if host == "fb.watch" || host == "fb.com" {
+            guard let code = parts.first, isSlug(code) else { return nil }
+            let base = host == "fb.watch" ? "https://fb.watch/" : "https://www.facebook.com/"
+            return URL(string: base + code + "/")
         }
-        if let v = comps.queryItems?.first(where: { $0.name == "v" })?.value,
-           !v.isEmpty, v.allSatisfy(\.isNumber) {
+        if parts.first == "share", parts.count >= 3, isSlug(parts[1]), isSlug(parts[2]) {
+            return URL(string: "https://www.facebook.com/share/\(parts[1])/\(parts[2])/")
+        }
+
+        // Group and page permalinks both point at a single public post.
+        if parts.count >= 4, parts[2] == "permalink" || parts[2] == "posts" {
+            let owner = parts[0], ownerID = parts[1], postID = parts[3]
+            guard (owner == "groups" || owner == "permalink"), isNumericID(ownerID), isNumericID(postID) else {
+                return nil
+            }
+            return URL(string: "https://www.facebook.com/\(owner)/\(ownerID)/\(parts[2])/\(postID)/")
+        }
+
+        if let v = comps.queryItems?.first(where: { $0.name == "v" })?.value, isNumericID(v) {
             return URL(string: "https://www.facebook.com/watch/?v=\(v)")
         }
-        let parts = path.split(separator: "/").map(String.init)
-        if parts.first == "reel", parts.count >= 2, parts[1].allSatisfy(\.isNumber) {
+        if parts.first == "watch", parts.count >= 2, isNumericID(parts[1]) {
+            return URL(string: "https://www.facebook.com/watch/?v=\(parts[1])")
+        }
+        if parts.first == "reel", parts.count >= 2, isNumericID(parts[1]) {
             return URL(string: "https://www.facebook.com/reel/\(parts[1])")
         }
         if let index = parts.firstIndex(of: "videos"), parts.count > index + 1 {
             let id = parts[index + 1]
-            guard !id.isEmpty, id.allSatisfy(\.isNumber) else { return nil }
+            guard isNumericID(id) else { return nil }
             let owner = parts.first.flatMap { $0 == "videos" ? nil : $0 } ?? "watch"
+            guard isSlug(owner) else { return nil }
             return URL(string: "https://www.facebook.com/\(owner)/videos/\(id)/")
+        }
+        // Legacy story.php?story_fbid=…&id=…
+        if parts.first == "story.php" {
+            let items = comps.queryItems ?? []
+            guard let story = items.first(where: { $0.name == "story_fbid" })?.value, isNumericID(story) else {
+                return nil
+            }
+            let owner = items.first(where: { $0.name == "id" })?.value
+            guard let owner, isNumericID(owner) else { return nil }
+            return URL(string: "https://www.facebook.com/story.php?story_fbid=\(story)&id=\(owner)")
         }
         return nil
     }
