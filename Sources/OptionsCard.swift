@@ -75,6 +75,17 @@ struct OptionsCard: View {
                 .help("مسح")
             }
 
+            if info.resolvedPlatform == .instagram {
+                HStack(spacing: 5) {
+                    Image(systemName: "person.badge.key")
+                        .font(.system(size: 9.5))
+                    Text("يستخدم جلسة تسجيل دخولك في \(BrowserCookies.source() == "safari" ? "Safari" : "Chrome") محليًا — ولا تُخزَّن الكوكيز.")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(TOAFont.font(9.5))
+                .foregroundStyle(ToaColor.textSecondary.opacity(0.85))
+            }
+
             HStack(spacing: 5) {
                 Image(systemName: "folder")
                 Text(model.downloadFolder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))

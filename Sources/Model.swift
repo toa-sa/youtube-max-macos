@@ -379,6 +379,10 @@ struct ParsedLink: Sendable {
     let platform: Platform
     let url: URL
     let id: String
+
+    /// Instagram only serves media to a logged-in session, so the app passes the
+    /// user's own browser cookies to yt-dlp. Nothing is stored or sent anywhere else.
+    var usesBrowserCookies: Bool { platform == .instagram }
 }
 
 enum LinkError: LocalizedError {
@@ -389,7 +393,7 @@ enum LinkError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalid:
-            "الرابط غير صالح. الصق رابط منشور واحد من YouTube أو X أو Facebook."
+            "الرابط غير صالح. الصق رابط منشور واحد من YouTube أو X أو Facebook أو Instagram."
         case .unsupportedPlatform(let name):
             "\(name) يطلب تسجيل الدخول لكل المحتوى تقريبًا، ولا يدعمه التطبيق حاليًا."
         case .loginRequired(let platform):
@@ -430,7 +434,11 @@ enum LinkParser {
         }
 
         if isInstagram(host) {
-            throw LinkError.unsupportedPlatform("Instagram")
+            guard let url = instagramURL(comps: comps, path: comps.path) else {
+                throw LinkError.invalid
+            }
+            let code = url.path.split(separator: "/").last.map(String.init) ?? url.absoluteString
+            return ParsedLink(platform: .instagram, url: url, id: code)
         }
 
         throw LinkError.invalid
@@ -475,6 +483,22 @@ enum LinkParser {
 
     private static func isNumericID(_ text: String) -> Bool {
         !text.isEmpty && text.count <= 32 && text.allSatisfy(\.isNumber)
+    }
+
+    private static func instagramURL(comps: URLComponents, path: String) -> URL? {
+        let parts = path.split(separator: "/").map(String.init)
+        // Short links (instagram.com/share/…) are resolved by yt-dlp itself.
+        if parts.first == "share", parts.count >= 2, isSlug(parts[1]) {
+            return URL(string: "https://www.instagram.com/share/\(parts[1])/")
+        }
+        if parts.first == "stories", parts.count >= 3, isSlug(parts[2]) {
+            return URL(string: "https://www.instagram.com/stories/\(parts[1])/\(parts[2])/")
+        }
+        if parts.count >= 2, ["p", "reel", "reels", "tv"].contains(parts[0]), isSlug(parts[1]) {
+            let kind = parts[0] == "reels" ? "reel" : parts[0]
+            return URL(string: "https://www.instagram.com/\(kind)/\(parts[1])/")
+        }
+        return nil
     }
 
     private static func facebookURL(host: String, comps: URLComponents, path: String) -> URL? {

@@ -8,6 +8,31 @@ struct DownloadUpdate: Sendable {
     var outputPath: String?
 }
 
+
+enum BrowserCookies {
+    /// Which installed browser holds the user's session. Read locally by yt-dlp only.
+    static func source() -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates: [(String, String)] = [
+            ("chrome", "Library/Application Support/Google/Chrome"),
+            ("edge", "Library/Application Support/Microsoft Edge"),
+            ("safari", "Library/Safari"),
+            ("firefox", "Library/Application Support/Firefox"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: home.appendingPathComponent($1).path) }?.0
+    }
+
+    static func arguments(for link: ParsedLink) -> [String] {
+        guard link.usesBrowserCookies, let browser = source() else { return [] }
+        return ["--cookies-from-browser", browser]
+    }
+
+    static func arguments(for video: VideoInfo) -> [String] {
+        guard video.resolvedPlatform == .instagram, let browser = source() else { return [] }
+        return ["--cookies-from-browser", browser]
+    }
+}
+
 enum EngineError: LocalizedError {
     case missingTool(String)
     case badMetadata
@@ -28,11 +53,13 @@ enum Metadata {
     static func fetch(link: ParsedLink) async throws -> VideoInfo {
         guard let ytdlp = Tools.find("yt-dlp") else { throw EngineError.missingTool("yt-dlp") }
         let url = link.url.absoluteString
+        var args = ["--ignore-config", "--no-playlist", "--no-warnings", "--skip-download",
+                    "--no-config-locations"]
+        args += BrowserCookies.arguments(for: link)
         let output = try await ProcessRunner.run(
             ytdlp,
-            ["--ignore-config", "--no-playlist", "--no-warnings", "--skip-download",
-             "--no-config-locations", "--dump-single-json", "--", url],
-            timeout: 90
+            args + ["--dump-single-json", "--", url],
+            timeout: 120
         )
         guard output.status == 0 else {
             throw EngineError.failed(processMessage(output.stderr))
@@ -191,7 +218,7 @@ final class DownloadRunner: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         send(.preparing, 0, "تجهيز التنزيل…")
 
-        let args = arguments(for: job, folder: folder)
+        let args = BrowserCookies.arguments(for: job.video) + arguments(for: job, folder: folder)
         let handle = Process()
         handle.executableURL = URL(fileURLWithPath: ytdlp)
         handle.arguments = args

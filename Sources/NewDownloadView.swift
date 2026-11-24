@@ -77,7 +77,7 @@ struct NewDownloadView: View {
                 Text("نزّل ما تريد مشاهدته")
                     .font(TOAFont.display)
                     .foregroundStyle(ToaColor.textPrimary)
-                Text("YouTube · X · Facebook — الصق الرابط، اختر الصيغة، ويُحفظ الملف على جهازك.")
+                Text("YouTube · X · Facebook · Instagram — الصق الرابط، اختر الصيغة، ويُحفظ الملف على جهازك.")
                     .font(TOAFont.bodyLarge)
                     .foregroundStyle(ToaColor.textSecondary)
             }
@@ -100,7 +100,7 @@ struct NewDownloadView: View {
                 .multilineTextAlignment(.leading)
                 .overlay(alignment: .leading) {
                     if model.urlText.isEmpty {
-                        Text("الصق رابط YouTube أو X أو Facebook…")
+                        Text("الصق رابط YouTube أو X أو Facebook أو Instagram…")
                             .font(TOAFont.font(12))
                             .foregroundStyle(ToaColor.textSecondary.opacity(0.7))
                             .environment(\.layoutDirection, .rightToLeft)
@@ -361,10 +361,10 @@ struct StartGuide: View {
                         .font(TOAFont.h3)
                         .foregroundStyle(ToaColor.textPrimary)
                 }
-                step(1, "انسخ رابط المنشور", "YouTube · X · Facebook — منشور واحد عام")
+                step(1, "انسخ رابط المنشور", "YouTube · X · Facebook · Instagram — منشور واحد")
                 step(2, "الصقه في الحقل واضغط تحقق", "ستظهر معاينة الفيديو والجودات المتاحة.")
                 step(3, "اختر الصيغة والجودة ثم ابدأ", "يُحفظ الملف في مجلد الأفلام على جهازك.")
-                Text("Instagram يحتاج تسجيل دخول لكل المحتوى تقريبًا، لذلك لا يدعمه التطبيق.")
+                Text("Instagram يعمل عبر جلسة تسجيل دخولك في Chrome على هذا الجهاز فقط.")
                     .font(TOAFont.font(9.5))
                     .foregroundStyle(ToaColor.textSecondary.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
@@ -372,7 +372,7 @@ struct StartGuide: View {
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 10))
                         .foregroundStyle(ToaColor.success)
-                    Text("محلي بالكامل · بلا حسابات أو تتبّع")
+                    Text("محلي بالكامل · بلا تتبّع")
                         .font(TOAFont.caption)
                         .foregroundStyle(ToaColor.textSecondary)
                 }
